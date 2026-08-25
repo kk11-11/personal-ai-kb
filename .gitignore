@@ -1,0 +1,22 @@
+# 虚拟环境
+venv/
+.venv/
+
+# 本地向量模型(130MB+,不入库)
+models/
+
+# 向量数据库(运行时自动生成)
+chroma_db/
+
+# Python 缓存
+__pycache__/
+*.pyc
+*.pyo
+
+# 环境变量 / 密钥
+.env
+*.env
+
+# 系统文件
+.DS_Store
+Thumbs.db

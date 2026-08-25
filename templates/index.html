@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>个人 AI 知识库</title>
+<style>
+  body { font-family: -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif; max-width: 880px; margin: 32px auto; padding: 0 20px; color: #222; }
+  h1 { font-size: 22px; margin-bottom: 4px; }
+  .sub { color: #888; font-size: 13px; margin-top: 0; }
+  .card { border: 1px solid #e5e5e5; border-radius: 8px; padding: 16px 18px; margin-bottom: 18px; background: #fff; }
+  .row { display: flex; gap: 10px; align-items: center; margin-top: 8px; }
+  input[type=text] { flex: 1; padding: 10px 12px; border: 1px solid #ccc; border-radius: 6px; font-size: 14px; }
+  button { padding: 10px 18px; background: #2b6cb0; color: #fff; border: none; border-radius: 6px; cursor: pointer; font-size: 14px; }
+  button:hover { background: #2c5282; }
+  button:disabled { background: #999; cursor: not-allowed; }
+  label { font-size: 13px; color: #555; font-weight: 600; }
+  .file-list { font-size: 13px; color: #555; margin-top: 10px; line-height: 1.6; }
+  .answer { background: #f7fafc; border-left: 3px solid #2b6cb0; padding: 12px 16px; border-radius: 4px; white-space: pre-wrap; font-size: 14px; line-height: 1.7; }
+  .sources { font-size: 12px; color: #666; margin-top: 14px; }
+  .src-item { background: #fafafa; border: 1px solid #eee; padding: 8px 10px; margin-top: 6px; border-radius: 4px; }
+  .toast { position: fixed; top: 20px; right: 20px; background: #2b6cb0; color: #fff; padding: 10px 16px; border-radius: 6px; display: none; font-size: 14px; }
+  .empty { color: #999; }
+</style>
+</head>
+<body>
+
+<h1>📚 个人 AI 知识库</h1>
+<p class="sub">本地中文向量模型 · 智谱 GLM-4-flash · RAG 问答</p>
+
+<div class="card">
+  <label>① 上传资料</label>
+  <div class="row">
+    <input type="file" id="fileInput" multiple accept=".md,.txt,.pdf">
+    <button onclick="uploadFiles()">上传并重建知识库</button>
+  </div>
+  <div class="file-list" id="fileList">加载中...</div>
+</div>
+
+<div class="card">
+  <label>② 提问</label>
+  <div class="row">
+    <input type="text" id="question" placeholder="例如:RAG 是什么?chunk 切太大有什么问题?" onkeydown="if(event.key==='Enter') askQuestion()">
+    <button id="askBtn" onclick="askQuestion()">问 AI</button>
+  </div>
+</div>
+
+<div class="card" id="resultCard" style="display:none;">
+  <label>回答</label>
+  <div class="answer" id="answer"></div>
+  <div class="sources" id="sources"></div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+async function loadDocs() {
+  const r = await fetch('/docs');
+  const d = await r.json();
+  const el = document.getElementById('fileList');
+  if (!d.files.length) {
+    el.innerHTML = '<span class="empty">暂无文档 — 上传几个试试,支持 .md / .txt / .pdf</span>';
+  } else {
+    el.innerHTML = '当前资料:<b>' + d.files.length + '</b> 个文件,共 <b>' + d.chunks + '</b> 个片段<br>' +
+      d.files.map(f => '· ' + f).join('<br>');
+  }
+}
+
+function toast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.style.display = 'block';
+  setTimeout(() => t.style.display = 'none', 2200);
+}
+
+async function uploadFiles() {
+  const fi = document.getElementById('fileInput');
+  if (!fi.files.length) { toast('请先选文件'); return; }
+  const fd = new FormData();
+  for (const f of fi.files) fd.append('files', f);
+  toast('正在重建知识库...');
+  const r = await fetch('/upload', { method: 'POST', body: fd });
+  const d = await r.json();
+  if (d.ok) {
+    toast('已入库 ' + d.chunks + ' 个片段');
+    fi.value = '';
+    loadDocs();
+  } else {
+    toast('失败: ' + (d.error || '未知错误'));
+  }
+}
+
+async function askQuestion() {
+  const q = document.getElementById('question').value.trim();
+  if (!q) return;
+  const btn = document.getElementById('askBtn');
+  btn.disabled = true; btn.textContent = '思考中...';
+  try {
+    const r = await fetch('/ask', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({question: q})
+    });
+    const d = await r.json();
+    if (!d.ok) { alert(d.error || '出错了'); return; }
+    document.getElementById('resultCard').style.display = 'block';
+    document.getElementById('answer').textContent = d.answer;
+    const srcs = d.sources || [];
+    document.getElementById('sources').innerHTML = '<br>📎 参考资料:<br>' +
+      srcs.map(s => '<div class="src-item"><b>' + s.source + '#' + s.chunk + '</b>: ' + s.preview + '...</div>').join('');
+  } finally {
+    btn.disabled = false; btn.textContent = '问 AI';
+  }
+}
+
+loadDocs();
+</script>
+
+</body>
+</html>

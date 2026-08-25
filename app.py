@@ -6,6 +6,7 @@ from flask import Flask, request, jsonify, render_template
 from sentence_transformers import SentenceTransformer
 import chromadb
 import pdfplumber
+import docx
 from openai import OpenAI
 
 # ====== 路径配置(以本文件所在目录为根)======
@@ -38,6 +39,9 @@ def read_text(path: str) -> str:
                 t = page.extract_text() or ""
                 parts.append(t)
         return "\n".join(parts)
+    if path.lower().endswith(".docx"):
+        document = docx.Document(path)
+        return "\n".join(p.text for p in document.paragraphs if p.text.strip())
     with open(path, "r", encoding="utf-8") as f:
         return f.read()
 
@@ -62,6 +66,8 @@ def reingest() -> int:
     paths = sorted(
         glob.glob(os.path.join(DOCS_DIR, "*.md"))
         + glob.glob(os.path.join(DOCS_DIR, "*.txt"))
+        + glob.glob(os.path.join(DOCS_DIR, "*.pdf"))
+        + glob.glob(os.path.join(DOCS_DIR, "*.docx"))
     )
     if not paths:
         return 0
@@ -130,7 +136,7 @@ def index():
 @app.route("/docs", methods=["GET"])
 def list_docs():
     files = []
-    for ext in ("*.md", "*.txt", "*.pdf"):
+    for ext in ("*.md", "*.txt", "*.pdf", "*.docx"):
         files.extend(sorted(glob.glob(os.path.join(DOCS_DIR, ext))))
     files = [os.path.basename(f) for f in files]
     return jsonify({"ok": True, "files": files, "chunks": collection.count()})
@@ -145,7 +151,7 @@ def upload():
         if not f.filename:
             continue
         ext = os.path.splitext(f.filename)[1].lower()
-        if ext not in (".md", ".txt", ".pdf"):
+        if ext not in (".md", ".txt", ".pdf", ".docx"):
             continue
         dest = os.path.join(DOCS_DIR, f.filename)
         f.save(dest)

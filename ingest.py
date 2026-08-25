@@ -5,6 +5,7 @@ import glob
 from sentence_transformers import SentenceTransformer
 import chromadb
 import pdfplumber
+import docx
 
 CHUNK_SIZE = 500        # 每段目标长度（字符）
 CHUNK_OVERLAP = 80      # 段与段之间的重叠，避免上下文断裂
@@ -22,6 +23,9 @@ def read_text(path: str) -> str:
                 t = page.extract_text() or ""
                 parts.append(t)
         return "\n".join(parts)
+    if path.lower().endswith(".docx"):
+        document = docx.Document(path)
+        return "\n".join(p.text for p in document.paragraphs if p.text.strip())
     # txt / md
     with open(path, "r", encoding="utf-8") as f:
         return f.read()
@@ -46,12 +50,12 @@ def split_into_chunks(text: str, size: int = CHUNK_SIZE, overlap: int = CHUNK_OV
 def main():
     os.makedirs(DOCS_DIR, exist_ok=True)
     paths = []
-    for ext in ("*.md", "*.txt"):
+    for ext in ("*.md", "*.txt", "*.pdf", "*.docx"):
         paths.extend(glob.glob(os.path.join(DOCS_DIR, ext)))
     paths = sorted(set(paths))
 
     if not paths:
-        print(f"⚠️  {DOCS_DIR}/ 下没有任何 .md / .txt 文件。先放点资料进去再跑。")
+        print(f"⚠️  {DOCS_DIR}/ 下没有任何 .md / .txt / .pdf / .docx 文件。先放点资料进去再跑。")
         return
 
     print(f"📚 找到 {len(paths)} 个文档，开始处理...")

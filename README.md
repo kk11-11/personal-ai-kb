@@ -35,7 +35,7 @@ cd personal-ai-kb
 | 中文向量化 | **sentence-transformers + BAAI/bge-small-zh-v1.5** | 本地运行，中文检索效果优秀 |
 | 向量数据库 | **Chroma (chromadb)** | 本地持久化，几行代码即可上手 |
 | 大模型（生成） | **智谱 GLM-4-flash** API | 有免费额度，OpenAI 兼容协议 |
-| 文档解析 | **pdfplumber** + 原生 `.md/.txt` 读取 | 支持 PDF 与文本 |
+| 文档解析 | **pdfplumber** + **python-docx** + 原生 `.md/.txt` 读取 | 支持 PDF / Word / 文本 |
 | 文本切分 | 手写递归切分（带重叠窗口） | 自己实现，原理清晰 |
 
 ## 目录结构
@@ -69,7 +69,7 @@ venv\Scripts\activate          # Windows
 # source venv/bin/activate     # macOS / Linux
 
 # 2. 安装依赖
-pip install flask chromadb sentence-transformers pdfplumber openai
+pip install -r requirements.txt
 
 # 3. 配置智谱 API Key（仅当前终端有效）
 $env:ZHIPU_API_KEY = "你的key"     # PowerShell
@@ -80,7 +80,7 @@ python app.py
 ```
 
 浏览器打开 http://127.0.0.1:5000 即可使用：
-1. 点击「选择文件」上传 `.md / .txt / .pdf` 资料（可多选）
+1. 点击「选择文件」上传 `.md / .txt / .pdf / .docx` 资料（可多选）
 2. 点击「上传并重建知识库」完成向量化入库
 3. 在提问框输入问题，获得基于资料的回答与出处
 4. 资料列表右侧的「删除」按钮可移除某份文档（仅删该来源的片段，轻量、无需全量重建）
@@ -106,7 +106,7 @@ python app.py
 
 ## 后续可扩展方向
 
-- 支持更多文件格式（Word、网页、图片 OCR）
+- 支持更多文件格式（网页抓取、图片 OCR）
 - 切换/接入本地大模型（Ollama + Qwen），实现完全离线
 - 增加对话历史与多轮追问
 - 容器化部署（Docker）并上线公网

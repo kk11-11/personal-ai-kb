@@ -13,6 +13,8 @@
   button { padding: 10px 18px; background: #2b6cb0; color: #fff; border: none; border-radius: 6px; cursor: pointer; font-size: 14px; }
   button:hover { background: #2c5282; }
   button:disabled { background: #999; cursor: not-allowed; }
+  .del-btn { margin-left: 10px; padding: 2px 10px; background: #e53e3e; font-size: 12px; }
+  .del-btn:hover { background: #c53030; }
   label { font-size: 13px; color: #555; font-weight: 600; }
   .file-list { font-size: 13px; color: #555; margin-top: 10px; line-height: 1.6; }
   .answer { background: #f7fafc; border-left: 3px solid #2b6cb0; padding: 12px 16px; border-radius: 4px; white-space: pre-wrap; font-size: 14px; line-height: 1.7; }
@@ -59,9 +61,24 @@ async function loadDocs() {
   const el = document.getElementById('fileList');
   if (!d.files.length) {
     el.innerHTML = '<span class="empty">暂无文档 — 上传几个试试,支持 .md / .txt / .pdf</span>';
-  } else {
-    el.innerHTML = '当前资料:<b>' + d.files.length + '</b> 个文件,共 <b>' + d.chunks + '</b> 个片段<br>' +
-      d.files.map(f => '· ' + f).join('<br>');
+    return;
+  }
+  const head = document.createElement('div');
+  head.innerHTML = '当前资料:<b>' + d.files.length + '</b> 个文件,共 <b>' + d.chunks + '</b> 个片段';
+  el.innerHTML = '';
+  el.appendChild(head);
+  for (const f of d.files) {
+    const line = document.createElement('div');
+    line.style.marginTop = '4px';
+    const name = document.createElement('span');
+    name.textContent = '· ' + f;
+    const btn = document.createElement('button');
+    btn.className = 'del-btn';
+    btn.textContent = '删除';
+    btn.onclick = () => deleteDoc(f);
+    line.appendChild(name);
+    line.appendChild(btn);
+    el.appendChild(line);
   }
 }
 
@@ -70,6 +87,22 @@ function toast(msg) {
   t.textContent = msg;
   t.style.display = 'block';
   setTimeout(() => t.style.display = 'none', 2200);
+}
+
+async function deleteDoc(fname) {
+  if (!confirm('确定删除「' + fname + '」?该文档将从知识库中移除。')) return;
+  const r = await fetch('/delete', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({filename: fname})
+  });
+  const d = await r.json();
+  if (d.ok) {
+    toast('已删除 ' + d.deleted + ' · 剩余 ' + d.chunks + ' 个片段');
+    loadDocs();
+  } else {
+    toast('失败: ' + (d.error || '未知错误'));
+  }
 }
 
 async function uploadFiles() {

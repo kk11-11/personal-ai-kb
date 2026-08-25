@@ -154,6 +154,26 @@ def upload():
     return jsonify({"ok": True, "saved": saved, "chunks": n})
 
 
+@app.route("/delete", methods=["POST"])
+def delete_doc():
+    data = request.get_json(silent=True) or {}
+    fname = (data.get("filename") or "").strip()
+    if not fname:
+        return jsonify({"ok": False, "error": "文件名不能为空"}), 400
+    # 防目录穿越:只用纯文件名,丢弃任何路径成分
+    safe = os.path.basename(fname)
+    path = os.path.join(DOCS_DIR, safe)
+    if not os.path.exists(path):
+        return jsonify({"ok": False, "error": "文件不存在"}), 404
+    try:
+        os.remove(path)
+        # 只删该来源对应的片段,不必全量重建(比 reingest 更轻量)
+        collection.delete(where={"source": safe})
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
+    return jsonify({"ok": True, "deleted": safe, "chunks": collection.count()})
+
+
 @app.route("/ask", methods=["POST"])
 def ask():
     data = request.get_json(silent=True) or {}

@@ -2,6 +2,21 @@
 
 > 一个基于 RAG（检索增强生成）的本地个人知识库 Web 应用：上传文档 → 自动向量化建库 → 基于资料问答并标注出处。
 
+[![GitHub](https://img.shields.io/badge/GitHub-kk11--11%2Fpersonal--ai--kb-blue?logo=github)](https://github.com/kk11-11/personal-ai-kb)
+[📦 仓库地址](https://github.com/kk11-11/personal-ai-kb) · [💻 源代码](https://github.com/kk11-11/personal-ai-kb)
+
+## 在线演示
+
+本项目为**本地运行应用**（向量模型与大模型均需在本地/密钥下运行），无法提供公共在线 Demo。你可以按下方「本地运行」步骤，在 5 分钟内于自己电脑上跑起来：
+
+```bash
+git clone https://github.com/kk11-11/personal-ai-kb.git
+cd personal-ai-kb
+# 然后跟随「本地运行」完成 venv / 依赖 / API Key / python app.py
+```
+
+运行后访问 http://127.0.0.1:5000 即可体验：上传资料 → 提问 → 获得带出处引用的回答。
+
 ## 项目简介
 
 本项目的目标是解决一个真实痛点：**网上收藏了无数好文章，却从未真正消化**。  

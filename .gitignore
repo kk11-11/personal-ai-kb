@@ -20,3 +20,6 @@ __pycache__/
 # 系统文件
 .DS_Store
 Thumbs.db
+
+# 私人面试练习稿（仅本地,不公开）
+面试讲述.md

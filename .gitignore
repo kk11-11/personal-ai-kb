@@ -20,6 +20,3 @@ __pycache__/
 # 系统文件
 .DS_Store
 Thumbs.db
-
-# 个人简历(含隐私,不入库)
-docs/我的简历 (1).pdf

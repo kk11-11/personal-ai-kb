@@ -17,11 +17,31 @@ DOCS_DIR = os.path.join(APP_DIR, "docs")
 COLLECTION = "personal_kb"
 TOP_K = 3
 
+# ====== 模型自动保障:本地缺失则从 ModelScope 下载(国内可访问)======
+def ensure_model():
+    if os.path.isdir(MODEL_DIR):
+        return
+    print("📥 未检测到本地向量模型,正在从 ModelScope 下载 BAAI/bge-small-zh-v1.5 ...")
+    try:
+        from modelscope import snapshot_download
+        snapshot_download("BAAI/bge-small-zh-v1.5", local_dir=MODEL_DIR)
+    except Exception as e:
+        raise SystemExit(f"❌ 模型下载失败: {e}\n请手动把模型放到 {MODEL_DIR}")
+
+
 # ====== 启动时:加载模型 + 初始化 Chroma(只加载一次)======
 print("🔧 启动中: 加载本地向量模型 ...")
+ensure_model()
 embedder = SentenceTransformer(MODEL_DIR)
 chroma_client = chromadb.PersistentClient(path=DB_DIR)
 collection = chroma_client.get_or_create_collection(COLLECTION)
+
+# 知识库为空且有资料时,自动建库(提升首次体验;本地 / Docker 通用)
+if collection.count() == 0:
+    try:
+        reingest()
+    except Exception as e:
+        print("⚠️ 自动建库跳过:", e)
 
 API_KEY = os.environ.get("ZHIPU_API_KEY")
 if not API_KEY:
@@ -194,5 +214,6 @@ def ask():
 
 
 if __name__ == "__main__":
-    print("🚀 个人 AI 知识库 已启动: http://127.0.0.1:5000")
-    app.run(host="127.0.0.1", port=5000, debug=False)
+    print("🚀 个人 AI 知识库 已启动: http://0.0.0.0:5000")
+    host = os.environ.get("HOST", "0.0.0.0")
+    app.run(host=host, port=5000, debug=False)

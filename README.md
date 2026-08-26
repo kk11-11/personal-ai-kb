@@ -104,12 +104,43 @@ python app.py
   → 返回回答 + 来源引用
 ```
 
+## Docker 部署
+
+无需手动配置 venv，只要装了 Docker / Docker Desktop，一条命令即可启动完整服务。
+
+```bash
+# 1. 准备密钥：复制模板并填入你的智谱 Key
+cp .env.example .env
+# 编辑 .env，把 ZHIPU_API_KEY 改成你的真实 key
+
+# 2. 构建并后台启动
+docker compose up --build -d
+
+# 3. 查看日志（看到 "已启动: http://0.0.0.0:5000" 即成功）
+docker compose logs -f
+```
+
+启动后访问 http://localhost:5000 即可使用。
+
+### 卷与持久化
+- `./docs`：你上传的资料，存于宿主机，重启不丢
+- `./models`：中文向量模型。本地若已有 `models/bge-small-zh-v1.5` 直接挂载使用；**全新环境**首次启动会自动从 ModelScope 下载并缓存到此目录
+- `./chroma_db`：向量库持久化存储，避免每次重启重建
+
+### 常用命令
+```bash
+docker compose down            # 停止并移除容器
+docker compose up --build      # 重新构建后启动
+docker compose restart         # 重启服务
+```
+
+> 注：`.env` 含有密钥，已被 `.gitignore` 排除，不会提交到仓库；`models/`、`chroma_db/`、`venv/` 同样不进镜像与版本库。
+
 ## 后续可扩展方向
 
 - 支持更多文件格式（网页抓取、图片 OCR）
 - 切换/接入本地大模型（Ollama + Qwen），实现完全离线
 - 增加对话历史与多轮追问
-- 容器化部署（Docker）并上线公网
 
 ---
 

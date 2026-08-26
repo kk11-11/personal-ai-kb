@@ -1,0 +1,20 @@
+# 构建上下文排除项(减小镜像体积 / 避免把大文件塞进镜像)
+venv/
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+
+# 这些运行时通过卷挂载提供,不进镜像
+models/
+chroma_db/
+.env
+*.env
+
+# 版本控制与私人文件
+.git/
+面试讲述.md
+
+# 系统文件
+.DS_Store
+Thumbs.db

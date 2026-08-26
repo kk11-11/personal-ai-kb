@@ -1,0 +1,21 @@
+# 个人 AI 知识库 - Docker Compose
+# 使用: docker compose up --build
+services:
+  kb:
+    build: .
+    image: personal-ai-kb:latest
+    container_name: personal-ai-kb
+    ports:
+      - "5000:5000"
+    environment:
+      # 从同目录 .env 读取(Compose 默认加载 .env)
+      - ZHIPU_API_KEY=${ZHIPU_API_KEY}
+      - HOST=0.0.0.0
+    volumes:
+      # 资料库:上传的文档持久化在宿主机
+      - ./docs:/app/docs
+      # 本地向量模型:已存在则直接挂载,缺失则首次启动自动下载并缓存于此
+      - ./models:/app/models
+      # 向量数据库:持久化,避免每次重启重建
+      - ./chroma_db:/app/chroma_db
+    restart: unless-stopped

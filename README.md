@@ -104,9 +104,11 @@ python app.py
   → 返回回答 + 来源引用
 ```
 
-## Docker 部署
+## Docker 部署（可选）
 
-无需手动配置 venv，只要装了 Docker / Docker Desktop，一条命令即可启动完整服务。
+> **本地运行（venv）是主路径，开箱即用，不依赖 Docker。** 下面这节 Docker 部署是工程化加分项，适合想"一条命令复现整个 RAG 服务 / 上云部署"的场景。若你的环境没有 WSL2 + Docker Desktop（例如 Docker 引擎无法启动），**直接用上面的 venv 方式即可，不影响项目完整使用。**
+
+只要装好 Docker Desktop（需 Windows 的 WSL2 后端），一条命令即可启动完整服务：
 
 ```bash
 # 1. 准备密钥：复制模板并填入你的智谱 Key

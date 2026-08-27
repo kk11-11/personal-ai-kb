@@ -161,6 +161,14 @@ except AttributeError:
     pass
 
 
+# ====== 全局异常兜底:任何未捕获异常都返回安全 JSON,绝不抛 ascii codec 错误 ======
+@app.errorhandler(Exception)
+def handle_all(e):
+    import traceback
+    print("❌ 未捕获异常:\n", traceback.format_exc())
+    return json_response({"ok": False, "error": _safe_text(e)}, status=500)
+
+
 def _safe_text(s) -> str:
     """把任意对象转成纯 str; 含奇怪的 unicode 时做一次 utf-8 兜底, 避免 json.dumps 阶段再次踩 ASCII 坑。"""
     try:
@@ -246,6 +254,7 @@ def ask():
 
 
 if __name__ == "__main__":
-    print("🚀 个人 AI 知识库 已启动: http://0.0.0.0:5000")
+    print("🚀 个人 AI 知识库 已启动 (json_response utf-8 安全模式): http://0.0.0.0:5000")
+    print("   如果下面没见到这行,说明你跑的是旧代码 —— 请先彻底关闭旧进程再启动!")
     host = os.environ.get("HOST", "0.0.0.0")
     app.run(host=host, port=5000, debug=False)

@@ -2,7 +2,8 @@
 # 个人 AI 知识库 - Flask Web 版
 import os
 import glob
-from flask import Flask, request, jsonify, render_template
+import json
+from flask import Flask, request, jsonify, render_template, Response
 from sentence_transformers import SentenceTransformer
 import chromadb
 import pdfplumber
@@ -153,11 +154,28 @@ def answer_question(q: str):
 
 # ====== Flask 路由 ======
 app = Flask(__name__)
-# 让 jsonify 直接输出中文, 避免 ensure_ascii=True 在 Windows/Pure-Python json 下对含中文 answer 触发 ascii codec 错误
+# 让 jsonify 也走 ensure_ascii=False(防御性, 主路径已绕开)
 try:
     app.json.ensure_ascii = False
 except AttributeError:
-    pass  # Flask < 2.2
+    pass
+
+
+def _safe_text(s) -> str:
+    """把任意对象转成纯 str; 含奇怪的 unicode 时做一次 utf-8 兜底, 避免 json.dumps 阶段再次踩 ASCII 坑。"""
+    try:
+        return str(s)
+    except Exception:
+        try:
+            return repr(s).encode("utf-8", errors="replace").decode("utf-8", errors="replace")
+        except Exception:
+            return "<unprintable>"
+
+
+def json_response(data, status: int = 200):
+    """绕开 Flask jsonify, 直接 json.dumps(ensure_ascii=False) 并显式声明 charset=utf-8。彻底规避 ASCII codec 错误。"""
+    body = json.dumps(data, ensure_ascii=False, default=str)
+    return Response(body, status=status, content_type="application/json; charset=utf-8")
 
 
 @app.route("/")
@@ -171,7 +189,7 @@ def list_docs():
     for ext in ("*.md", "*.txt", "*.pdf", "*.docx"):
         files.extend(sorted(glob.glob(os.path.join(DOCS_DIR, ext))))
     files = [os.path.basename(f) for f in files]
-    return jsonify({"ok": True, "files": files, "chunks": collection.count()})
+    return json_response({"ok": True, "files": files, "chunks": collection.count()})
 
 
 @app.route("/upload", methods=["POST"])
@@ -189,7 +207,7 @@ def upload():
         f.save(dest)
         saved.append(f.filename)
     n = reingest()
-    return jsonify({"ok": True, "saved": saved, "chunks": n})
+    return json_response({"ok": True, "saved": saved, "chunks": n})
 
 
 @app.route("/delete", methods=["POST"])
@@ -197,21 +215,20 @@ def delete_doc():
     data = request.get_json(silent=True) or {}
     fname = (data.get("filename") or "").strip()
     if not fname:
-        return jsonify({"ok": False, "error": "文件名不能为空"}), 400
+        return json_response({"ok": False, "error": "文件名不能为空"}, status=400)
     # 防目录穿越:只用纯文件名,丢弃任何路径成分
     safe = os.path.basename(fname)
     path = os.path.join(DOCS_DIR, safe)
     if not os.path.exists(path):
-        return jsonify({"ok": False, "error": "文件不存在"}), 404
+        return json_response({"ok": False, "error": "文件不存在"}, status=404)
     try:
         os.remove(path)
         # 只删该来源对应的片段,不必全量重建(比 reingest 更轻量)
         collection.delete(where={"source": safe})
     except Exception as e:
         # 防止错误信息本身含特殊字符在序列化时再次编码失败
-        err = str(e).encode("utf-8", errors="replace").decode("utf-8", errors="replace")
-        return jsonify({"ok": False, "error": err}), 500
-    return jsonify({"ok": True, "deleted": safe, "chunks": collection.count()})
+        return json_response({"ok": False, "error": _safe_text(e)}, status=500)
+    return json_response({"ok": True, "deleted": safe, "chunks": collection.count()})
 
 
 @app.route("/ask", methods=["POST"])
@@ -219,14 +236,13 @@ def ask():
     data = request.get_json(silent=True) or {}
     q = (data.get("question") or "").strip()
     if not q:
-        return jsonify({"ok": False, "error": "问题不能为空"}), 400
+        return json_response({"ok": False, "error": "问题不能为空"}, status=400)
     try:
         answer, sources = answer_question(q)
     except Exception as e:
         # 防止错误信息本身含特殊字符在序列化时再次编码失败
-        err = str(e).encode("utf-8", errors="replace").decode("utf-8", errors="replace")
-        return jsonify({"ok": False, "error": err}), 500
-    return jsonify({"ok": True, "answer": answer, "sources": sources})
+        return json_response({"ok": False, "error": _safe_text(e)}, status=500)
+    return json_response({"ok": True, "answer": answer, "sources": sources})
 
 
 if __name__ == "__main__":

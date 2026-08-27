@@ -10,6 +10,8 @@ import pdfplumber
 import docx
 from openai import OpenAI
 import sys
+import time
+import threading
 # Windows 下强制 stdout/stderr 为 utf-8, 避免 print 与默认编码报错
 try:
     sys.stdout.reconfigure(encoding="utf-8")
@@ -24,6 +26,8 @@ DB_DIR = os.path.join(APP_DIR, "chroma_db")
 DOCS_DIR = os.path.join(APP_DIR, "docs")
 COLLECTION = "personal_kb"
 TOP_K = 3
+RERANK_DIR = os.path.join(APP_DIR, "models/bge-reranker-base")  # 二阶段重排模型(可选,缺失则自动降级)
+RERANK_TOP_K = 10  # 第一阶段向量召回候选数, 再交给 ReRank 精排取 TOP_K
 
 # ====== 模型自动保障:本地缺失则从 ModelScope 下载(国内可访问)======
 def ensure_model():
@@ -127,9 +131,13 @@ def answer_question(q: str, history=None):
     if collection.count() == 0:
         return ("⚠️ 知识库是空的。请先在页面上传一些文档。", [])
     q_emb = embedder.encode([q]).tolist()
-    res = collection.query(query_embeddings=q_emb, n_results=TOP_K)
+    # 第一阶段:向量召回更多候选(给 ReRank 留空间; 不超过知识库实际片段数)
+    n_candidates = min(RERANK_TOP_K, collection.count())
+    res = collection.query(query_embeddings=q_emb, n_results=n_candidates)
     docs = res["documents"][0]
     metas = res["metadatas"][0]
+    # 第二阶段:ReRank 交叉编码器精排(模型缺失/失败自动降级,不影响可用性)
+    docs, metas = rerank(q, docs, metas, top_n=TOP_K)
     context = "\n\n".join(
         f"[{m['source']}#{m['chunk']}]\n{d}" for d, m in zip(docs, metas)
     )
@@ -195,6 +203,72 @@ def json_response(data, status: int = 200):
     """绕开 Flask jsonify, 直接 json.dumps(ensure_ascii=False) 并显式声明 charset=utf-8。彻底规避 ASCII codec 错误。"""
     body = json.dumps(data, ensure_ascii=False, default=str)
     return Response(body, status=status, content_type="application/json; charset=utf-8")
+
+
+# ====== 用户反馈存储(轻量 JSON + 锁, 不影响主问答性能)======
+FEEDBACK_PATH = os.path.join(APP_DIR, "feedback.json")
+_fb_lock = threading.Lock()
+
+def save_feedback(entry: dict) -> dict:
+    """追加一条反馈到 feedback.json, 返回最新统计(供复盘)。"""
+    entry["ts"] = time.strftime("%Y-%m-%d %H:%M:%S")
+    with _fb_lock:
+        try:
+            with open(FEEDBACK_PATH, "r", encoding="utf-8") as f:
+                data = json.load(f)
+        except Exception:
+            data = []
+        data.append(entry)
+        with open(FEEDBACK_PATH, "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False, indent=2)
+    return feedback_stats()
+
+def feedback_stats() -> dict:
+    try:
+        with open(FEEDBACK_PATH, "r", encoding="utf-8") as f:
+            data = json.load(f)
+    except Exception:
+        data = []
+    pos = sum(1 for x in data if x.get("rating") == "up")
+    neg = sum(1 for x in data if x.get("rating") == "down")
+    return {"ok": True, "total": len(data), "positive": pos, "negative": neg}
+
+
+# ====== 二阶段检索:向量召回 + ReRank 交叉编码器重排(模型缺失/失败则降级)======
+_reranker = None
+_reranker_lock = threading.Lock()
+
+def get_reranker():
+    """懒加载 ReRank 交叉编码器; 模型目录不存在或加载失败都返回 None(走降级)。"""
+    global _reranker
+    if _reranker is not None:
+        return _reranker
+    if not os.path.isdir(RERANK_DIR):
+        return None
+    with _reranker_lock:
+        if _reranker is None:
+            try:
+                from sentence_transformers import CrossEncoder
+                _reranker = CrossEncoder(RERANK_DIR)
+                print("✅ ReRank 模型已加载,启用二阶段重排")
+            except Exception as e:
+                print("⚠️ ReRank 模型加载失败,降级为纯向量检索:", _safe_text(e))
+                return None
+    return _reranker
+
+def rerank(q: str, docs, metas, top_n: int = TOP_K):
+    """用 ReRank 模型对候选片段精排,取 top_n。任意异常都降级为原始顺序。"""
+    model = get_reranker()
+    if model is None or not docs:
+        return docs[:top_n], metas[:top_n]
+    try:
+        pairs = [[q, d] for d in docs]
+        scores = model.predict(pairs)
+        order = sorted(range(len(docs)), key=lambda i: float(scores[i]), reverse=True)[:top_n]
+        return [docs[i] for i in order], [metas[i] for i in order]
+    except Exception as e:
+        print("⚠️ ReRank 推理失败,降级为纯向量检索:", _safe_text(e))
+        return docs[:top_n], metas[:top_n]
 
 
 @app.route("/")
@@ -263,6 +337,35 @@ def ask():
         # 防止错误信息本身含特殊字符在序列化时再次编码失败
         return json_response({"ok": False, "error": _safe_text(e)}, status=500)
     return json_response({"ok": True, "answer": answer, "sources": sources})
+
+
+@app.route("/feedback", methods=["POST"])
+def feedback():
+    """记录用户对某条回答的评分(👍/👎), 只存该轮内容, 不影响问答链路。"""
+    data = request.get_json(silent=True) or {}
+    rating = data.get("rating")
+    if rating not in ("up", "down"):
+        return json_response({"ok": False, "error": "rating 必须是 up 或 down"}, status=400)
+    # 只记该轮的问题/答案/来源, 来源截断避免文件过大
+    entry = {
+        "rating": rating,
+        "question": (data.get("question") or "")[:500],
+        "answer": (data.get("answer") or "")[:2000],
+        "sources": [
+            {"source": s.get("source"), "chunk": s.get("chunk")}
+            for s in (data.get("sources") or [])[:3]
+        ],
+    }
+    try:
+        stats = save_feedback(entry)
+    except Exception as e:
+        return json_response({"ok": False, "error": _safe_text(e)}, status=500)
+    return json_response(stats)
+
+
+@app.route("/feedback/stats", methods=["GET"])
+def feedback_stats_route():
+    return json_response(feedback_stats())
 
 
 if __name__ == "__main__":

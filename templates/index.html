@@ -25,7 +25,28 @@
   .src-item { background: #fafafa; border: 1px solid #eee; padding: 8px 10px; margin-top: 6px; border-radius: 4px; }
   .toast { position: fixed; top: 20px; right: 20px; background: #2b6cb0; color: #fff; padding: 10px 16px; border-radius: 6px; display: none; font-size: 14px; }
   .empty { color: #999; }
+  .fb-row { margin-top: 8px; display: flex; gap: 8px; }
+  .fb-btn { padding: 4px 12px; font-size: 12px; background: #edf2f7; color: #2b6cb0; border: 1px solid #cbd5e0; border-radius: 6px; cursor: pointer; }
+  .fb-btn:hover:not(:disabled) { background: #e2e8f0; }
+  .fb-btn:disabled { color: #38a169; border-color: #9ae6b4; cursor: default; background: #f0fff4; }
+  .fb-stat { font-size: 12px; color: #888; margin-left: 10px; }
+  .copy-btn { margin-top: 8px; padding: 4px 12px; font-size: 12px; background: #edf2f7; color: #4a5568; border: 1px solid #cbd5e0; border-radius: 6px; cursor: pointer; }
+  .copy-btn:hover { background: #e2e8f0; }
+  .md-body pre { background: #1a202c; color: #e2e8f0; padding: 12px 14px; border-radius: 6px; overflow-x: auto; font-size: 13px; }
+  .md-body code { font-family: Consolas, Monaco, monospace; }
+  .md-body :not(pre) > code { background: #edf2f7; padding: 1px 5px; border-radius: 4px; color: #c53030; }
+  .md-body h1, .md-body h2, .md-body h3 { margin: 10px 0 6px; }
+  .md-body ul, .md-body ol { padding-left: 22px; margin: 6px 0; }
+  @media (max-width: 600px) {
+    body { margin: 16px auto; padding: 0 12px; }
+    .card { padding: 12px 14px; }
+    input[type=text] { font-size: 16px; }
+    h1 { font-size: 20px; }
+  }
 </style>
+<script src="https://cdn.jsdelivr.net/npm/marked@12.0.0/marked.min.js"></script>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
 </head>
 <body>
 
@@ -52,6 +73,7 @@
 <div class="card" id="resultCard" style="display:none;">
   <div class="row" style="justify-content: space-between; margin-top: 0;">
     <label>对话记录</label>
+    <span id="fbStat" class="fb-stat"></span>
     <button class="del-btn" onclick="clearChat()">清空对话</button>
   </div>
   <div id="chat"></div>
@@ -139,10 +161,34 @@ function renderChat() {
     q.className = 'q-bubble';
     q.textContent = '🙋 ' + h.q;
     const a = document.createElement('div');
-    a.className = 'a-bubble answer';
-    a.textContent = h.a;
+    a.className = 'a-bubble answer md-body';
+    if (window.marked) {
+      try { a.innerHTML = marked.parse(h.a || ''); } catch (e) { a.textContent = h.a; }
+      if (window.hljs) { a.querySelectorAll('pre code').forEach(b => { try { hljs.highlightElement(b); } catch (e) {} }); }
+    } else {
+      a.textContent = h.a;
+    }
     msg.appendChild(q);
     msg.appendChild(a);
+    // 操作行:复制 + 反馈(每条独立, 避免误标)
+    const fb = document.createElement('div');
+    fb.className = 'fb-row';
+    const copyBtn = document.createElement('button');
+    copyBtn.className = 'copy-btn'; copyBtn.textContent = '📋 复制';
+    copyBtn.onclick = () => {
+      navigator.clipboard.writeText(h.a).then(
+        () => { copyBtn.textContent = '✅ 已复制'; setTimeout(() => copyBtn.textContent = '📋 复制', 1500); },
+        () => { copyBtn.textContent = '复制失败'; }
+      );
+    };
+    const up = document.createElement('button');
+    up.className = 'fb-btn'; up.textContent = '👍 有帮助';
+    const down = document.createElement('button');
+    down.className = 'fb-btn'; down.textContent = '👎 答非所问';
+    up.onclick = () => sendFeedback(h, 'up', up, down);
+    down.onclick = () => sendFeedback(h, 'down', up, down);
+    fb.appendChild(copyBtn); fb.appendChild(up); fb.appendChild(down);
+    msg.appendChild(fb);
     const srcs = h.sources || [];
     if (srcs.length) {
       const s = document.createElement('div');
@@ -160,6 +206,31 @@ function clearChat() {
   chatHistory = [];
   document.getElementById('chat').innerHTML = '';
   document.getElementById('resultCard').style.display = 'none';
+}
+
+async function sendFeedback(h, rating, upBtn, downBtn) {
+  const r = await fetch('/feedback', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({rating: rating, question: h.q, answer: h.a, sources: h.sources || []})
+  });
+  const d = await r.json();
+  if (!d.ok) { toast('反馈失败: ' + (d.error || '')); return; }
+  if (rating === 'up') { upBtn.textContent = '✅ 已赞'; } else { downBtn.textContent = '✅ 已踩'; }
+  downBtn.disabled = upBtn.disabled = true;
+  document.getElementById('fbStat').textContent =
+    '💡 累计反馈 ' + d.total + ' 条（👍' + d.positive + ' / 👎' + d.negative + '）';
+}
+
+async function refreshFbStat() {
+  try {
+    const r = await fetch('/feedback/stats');
+    const d = await r.json();
+    if (d.ok && d.total) {
+      document.getElementById('fbStat').textContent =
+        '💡 累计反馈 ' + d.total + ' 条（👍' + d.positive + ' / 👎' + d.negative + '）';
+    }
+  } catch (e) {}
 }
 
 async function askQuestion() {
@@ -185,6 +256,7 @@ async function askQuestion() {
 }
 
 loadDocs();
+refreshFbStat();
 </script>
 
 </body>

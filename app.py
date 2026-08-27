@@ -8,6 +8,13 @@ import chromadb
 import pdfplumber
 import docx
 from openai import OpenAI
+import sys
+# Windows 下强制 stdout/stderr 为 utf-8, 避免 print 与默认编码报错
+try:
+    sys.stdout.reconfigure(encoding="utf-8")
+    sys.stderr.reconfigure(encoding="utf-8")
+except Exception:
+    pass
 
 # ====== 路径配置(以本文件所在目录为根)======
 APP_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -146,6 +153,11 @@ def answer_question(q: str):
 
 # ====== Flask 路由 ======
 app = Flask(__name__)
+# 让 jsonify 直接输出中文, 避免 ensure_ascii=True 在 Windows/Pure-Python json 下对含中文 answer 触发 ascii codec 错误
+try:
+    app.json.ensure_ascii = False
+except AttributeError:
+    pass  # Flask < 2.2
 
 
 @app.route("/")
@@ -196,7 +208,9 @@ def delete_doc():
         # 只删该来源对应的片段,不必全量重建(比 reingest 更轻量)
         collection.delete(where={"source": safe})
     except Exception as e:
-        return jsonify({"ok": False, "error": str(e)}), 500
+        # 防止错误信息本身含特殊字符在序列化时再次编码失败
+        err = str(e).encode("utf-8", errors="replace").decode("utf-8", errors="replace")
+        return jsonify({"ok": False, "error": err}), 500
     return jsonify({"ok": True, "deleted": safe, "chunks": collection.count()})
 
 
@@ -209,7 +223,9 @@ def ask():
     try:
         answer, sources = answer_question(q)
     except Exception as e:
-        return jsonify({"ok": False, "error": str(e)}), 500
+        # 防止错误信息本身含特殊字符在序列化时再次编码失败
+        err = str(e).encode("utf-8", errors="replace").decode("utf-8", errors="replace")
+        return jsonify({"ok": False, "error": err}), 500
     return jsonify({"ok": True, "answer": answer, "sources": sources})
 
 

@@ -146,11 +146,7 @@ flowchart LR
 
 ![Web 界面 - 上传与提问](images/web-ui.png)
 
-<!-- 问答示例截图就位后取消下一行注释：
 ![问答示例 - 带出处引用](images/demo-qa.png)
--->
-
-**还差一张「问答示例」截图（`images/demo-qa.png`）：** 在 http://127.0.0.1:5000 上传一份资料后，在提问框问个相关问题（例如"什么是 RAG？"），等 AI 给出带「来源引用」的回答，截取**回答区 + 来源引用区**的画面，保存为 `images/demo-qa.png` 丢进 `images/` 目录即可。
 
 ## Docker 部署（可选）
 

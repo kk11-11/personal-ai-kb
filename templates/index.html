@@ -18,6 +18,9 @@
   label { font-size: 13px; color: #555; font-weight: 600; }
   .file-list { font-size: 13px; color: #555; margin-top: 10px; line-height: 1.6; }
   .answer { background: #f7fafc; border-left: 3px solid #2b6cb0; padding: 12px 16px; border-radius: 4px; white-space: pre-wrap; font-size: 14px; line-height: 1.7; }
+  .msg { margin-top: 14px; }
+  .q-bubble { background: #ebf4ff; border-radius: 8px; padding: 10px 14px; font-size: 14px; line-height: 1.6; }
+  .a-bubble { margin-top: 8px; }
   .sources { font-size: 12px; color: #666; margin-top: 14px; }
   .src-item { background: #fafafa; border: 1px solid #eee; padding: 8px 10px; margin-top: 6px; border-radius: 4px; }
   .toast { position: fixed; top: 20px; right: 20px; background: #2b6cb0; color: #fff; padding: 10px 16px; border-radius: 6px; display: none; font-size: 14px; }
@@ -47,9 +50,11 @@
 </div>
 
 <div class="card" id="resultCard" style="display:none;">
-  <label>回答</label>
-  <div class="answer" id="answer"></div>
-  <div class="sources" id="sources"></div>
+  <div class="row" style="justify-content: space-between; margin-top: 0;">
+    <label>对话记录</label>
+    <button class="del-btn" onclick="clearChat()">清空对话</button>
+  </div>
+  <div id="chat"></div>
 </div>
 
 <div class="toast" id="toast"></div>
@@ -122,6 +127,41 @@ async function uploadFiles() {
   }
 }
 
+let chatHistory = [];  // 多轮对话记忆: [{q, a, sources}]
+
+function renderChat() {
+  const box = document.getElementById('chat');
+  box.innerHTML = '';
+  for (const h of chatHistory) {
+    const msg = document.createElement('div');
+    msg.className = 'msg';
+    const q = document.createElement('div');
+    q.className = 'q-bubble';
+    q.textContent = '🙋 ' + h.q;
+    const a = document.createElement('div');
+    a.className = 'a-bubble answer';
+    a.textContent = h.a;
+    msg.appendChild(q);
+    msg.appendChild(a);
+    const srcs = h.sources || [];
+    if (srcs.length) {
+      const s = document.createElement('div');
+      s.className = 'sources';
+      s.innerHTML = '📎 参考资料:<br>' +
+        srcs.map(x => '<div class="src-item"><b>' + x.source + '#' + x.chunk + '</b>: ' + x.preview + '...</div>').join('');
+      msg.appendChild(s);
+    }
+    box.appendChild(msg);
+  }
+  box.scrollTop = box.scrollHeight;
+}
+
+function clearChat() {
+  chatHistory = [];
+  document.getElementById('chat').innerHTML = '';
+  document.getElementById('resultCard').style.display = 'none';
+}
+
 async function askQuestion() {
   const q = document.getElementById('question').value.trim();
   if (!q) return;
@@ -131,15 +171,14 @@ async function askQuestion() {
     const r = await fetch('/ask', {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({question: q})
+      body: JSON.stringify({question: q, history: chatHistory})
     });
     const d = await r.json();
     if (!d.ok) { alert(d.error || '出错了'); return; }
     document.getElementById('resultCard').style.display = 'block';
-    document.getElementById('answer').textContent = d.answer;
-    const srcs = d.sources || [];
-    document.getElementById('sources').innerHTML = '<br>📎 参考资料:<br>' +
-      srcs.map(s => '<div class="src-item"><b>' + s.source + '#' + s.chunk + '</b>: ' + s.preview + '...</div>').join('');
+    chatHistory.push({q: q, a: d.answer, sources: d.sources || []});
+    document.getElementById('question').value = '';
+    renderChat();
   } finally {
     btn.disabled = false; btn.textContent = '问 AI';
   }

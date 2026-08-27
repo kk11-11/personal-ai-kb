@@ -122,8 +122,8 @@ def reingest() -> int:
     return len(all_chunks)
 
 
-def answer_question(q: str):
-    """检索 + 智谱回答。返回 (answer, sources)。"""
+def answer_question(q: str, history=None):
+    """检索 + 智谱回答。history: 最近几轮 [(q,a),...] 用于指代消歧。返回 (answer, sources)。"""
     if collection.count() == 0:
         return ("⚠️ 知识库是空的。请先在页面上传一些文档。", [])
     q_emb = embedder.encode([q]).tolist()
@@ -133,10 +133,21 @@ def answer_question(q: str):
     context = "\n\n".join(
         f"[{m['source']}#{m['chunk']}]\n{d}" for d, m in zip(docs, metas)
     )
+    # 拼接最近 4 轮对话历史, 仅用于代词指代消歧(检索仍锚定当前问题, 避免上下文漂移)
+    hist_text = ""
+    if history:
+        recent = history[-4:]
+        hist_text = "\n".join(f"用户: {h.get('q', '')}\n助手: {h.get('a', '')}" for h in recent)
     prompt = (
         "你是用户的个人知识库助手。请严格根据下面提供的【资料】回答问题,"
-        "如果资料里没有答案,请直说'资料里没找到相关信息',不要编造。\n\n"
+        "如果资料里没有答案,请直说'资料里没找到相关信息',不要编造。\n"
+        "可以结合【对话历史】理解用户问题里的代词(它/这个/上面)指代什么,"
+        "但回答内容必须基于【资料】,不要凭记忆编造。\n\n"
         f"【资料】\n{context}\n\n"
+    )
+    if hist_text:
+        prompt += f"【对话历史】\n{hist_text}\n\n"
+    prompt += (
         f"【问题】{q}\n\n"
         f"【回答】"
     )
@@ -243,10 +254,11 @@ def delete_doc():
 def ask():
     data = request.get_json(silent=True) or {}
     q = (data.get("question") or "").strip()
+    history = data.get("history") or []
     if not q:
         return json_response({"ok": False, "error": "问题不能为空"}, status=400)
     try:
-        answer, sources = answer_question(q)
+        answer, sources = answer_question(q, history)
     except Exception as e:
         # 防止错误信息本身含特殊字符在序列化时再次编码失败
         return json_response({"ok": False, "error": _safe_text(e)}, status=500)

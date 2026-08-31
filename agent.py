@@ -9,6 +9,46 @@
 import json
 import re
 
+# 多轮对话: 最近保留轮数(超过的部分先被 LLM 摘要压缩, 而非直接丢弃)
+HISTORY_RECENT = 4
+
+
+def summarize_history(history, llm, model="glm-4-flash", keep_recent=HISTORY_RECENT):
+    """长对话上下文压缩(Context Engineering 核心手段之一)。
+
+    对话超过 keep_recent 轮时, 把更早的轮次用 LLM 压成一段摘要, 只把
+    [摘要 + 最近 keep_recent 轮] 拼进 prompt。既保留长程上下文, 又控制 token 成本。
+
+    返回 (summary_or_None, recent_turns)
+    - 未超阈值: (None, 原始 history) —— 零额外调用, 与原固定窗口行为一致
+    - 超阈值且摘要成功: (摘要文本, 最近 keep_recent 轮)
+    - 超阈值但摘要失败: (None, 最近 keep_recent 轮) —— 退化为原行为, 不阻断主流程
+    """
+    if not history or len(history) <= keep_recent:
+        return None, history
+    old = history[:-keep_recent]
+    recent = history[-keep_recent:]
+    old_text = "\n".join(
+        f"用户: {h.get('q', '')}\n助手: {h.get('a', '')}" for h in old
+    )
+    prompt = (
+        "请把下面这段对话历史压缩成一段简洁摘要(中文, 200 字以内)。\n"
+        "保留: 用户已确认的事实、已做出的决定、已解决的关键问题, 以及对后续对话重要的上下文"
+        "(例如提到的具体文件 / 项目 / 偏好)。\n"
+        "丢弃: 寒暄、重复内容、可被最近对话覆盖的细节。\n"
+        "不要编造新信息。\n\n"
+        f"【对话历史】\n{old_text}\n\n【摘要】"
+    )
+    try:
+        resp = llm.chat.completions.create(
+            model=model, messages=[{"role": "user", "content": prompt}]
+        )
+        summary = (resp.choices[0].message.content or "").strip()
+        return (summary or None), recent
+    except Exception as e:
+        print("⚠️ 历史摘要失败, 退化为固定窗口:", e)
+        return None, recent
+
 
 def build_tools(embedder, get_collection):
     """构造工具表。
@@ -152,10 +192,16 @@ def run_react(question, llm, tools, model="glm-4-flash", max_steps=4, history=No
         f"2. 一次结果不够可以继续调用其他工具, 但总共最多 {max_steps} 轮。\n"
         f"3. 信息足够时直接给最终答案, 不要再调用工具。\n"
         f"4. 答案必须基于工具返回的内容, 工具没返回的东西不许编造; 确实没有就说没找到。\n"
+        f"5. 若看到以 [早期对话摘要] 开头的内容, 那是对更早对话的压缩, 结合它来理解当前问题。\n"
     )
     messages = [{"role": "system", "content": system}]
     if history:
-        for h in history[-4:]:
+        summary, recent = summarize_history(history, llm, model=model)
+        if summary:
+            messages.append(
+                {"role": "user", "content": f"[早期对话摘要]\n{summary}"}
+            )
+        for h in recent:
             messages.append({"role": "user", "content": h.get("q", "")})
             messages.append({"role": "assistant", "content": h.get("a", "")})
     messages.append({"role": "user", "content": question})

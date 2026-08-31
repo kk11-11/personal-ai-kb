@@ -12,7 +12,7 @@ from openai import OpenAI
 import sys
 import time
 import threading
-from agent import build_tools, run_react
+from agent import build_tools, run_react, summarize_history
 # Windows 下强制 stdout/stderr 为 utf-8, 避免 print 与默认编码报错
 try:
     sys.stdout.reconfigure(encoding="utf-8")
@@ -153,15 +153,20 @@ def answer_question(q: str, history=None):
     context = "\n\n".join(
         f"[{m['source']}#{m['chunk']}]\n{d}" for d, m in zip(docs, metas)
     )
-    # 拼接最近 4 轮对话历史, 仅用于代词指代消歧(检索仍锚定当前问题, 避免上下文漂移)
+    # 拼接对话历史: 超过阈值时先摘要压缩早期轮次, 仅用于代词指代消歧
+    # (检索仍锚定当前问题, 避免上下文漂移; 长对话也不会无限膨胀 token)
     hist_text = ""
     if history:
-        recent = history[-4:]
-        hist_text = "\n".join(f"用户: {h.get('q', '')}\n助手: {h.get('a', '')}" for h in recent)
+        summary, recent = summarize_history(history, llm)
+        if summary:
+            hist_text = f"[早期对话摘要]\n{summary}\n\n"
+        hist_text += "\n".join(
+            f"用户: {h.get('q', '')}\n助手: {h.get('a', '')}" for h in recent
+        )
     prompt = (
         "你是用户的个人知识库助手。请严格根据下面提供的【资料】回答问题,"
         "如果资料里没有答案,请直说'资料里没找到相关信息',不要编造。\n"
-        "可以结合【对话历史】理解用户问题里的代词(它/这个/上面)指代什么,"
+        "可以结合【对话历史】(含可能的[早期对话摘要])理解用户问题里的代词(它/这个/上面)指代什么,"
         "但回答内容必须基于【资料】,不要凭记忆编造。\n\n"
         f"【资料】\n{context}\n\n"
     )

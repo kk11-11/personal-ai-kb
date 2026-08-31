@@ -37,6 +37,18 @@
   .md-body :not(pre) > code { background: #edf2f7; padding: 1px 5px; border-radius: 4px; color: #c53030; }
   .md-body h1, .md-body h2, .md-body h3 { margin: 10px 0 6px; }
   .md-body ul, .md-body ol { padding-left: 22px; margin: 6px 0; }
+  .mode-row { margin-top: 12px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .mode-switch { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: #975a16; font-weight: 600; cursor: pointer; user-select: none; }
+  .mode-switch input { width: 15px; height: 15px; cursor: pointer; accent-color: #d69e2e; }
+  .mode-hint { font-size: 12px; color: #888; }
+  .trace { background: #fffaf0; border-left: 3px solid #d69e2e; border-radius: 4px; padding: 10px 14px; margin-top: 10px; font-size: 13px; }
+  .trace-head { cursor: pointer; color: #975a16; font-weight: 600; user-select: none; }
+  .trace-body { margin-top: 8px; }
+  .trace-step { padding-top: 8px; margin-top: 8px; border-top: 1px dashed #f0e0c0; }
+  .trace-step:first-child { border-top: none; padding-top: 0; margin-top: 0; }
+  .trace-step-head { font-weight: 600; color: #975a16; }
+  .trace-args { color: #718096; font-size: 12px; font-family: Consolas, Monaco, monospace; margin-top: 2px; word-break: break-all; }
+  .trace-result { background: #fff; border: 1px solid #f0e0c0; padding: 6px 8px; border-radius: 4px; margin-top: 4px; white-space: pre-wrap; font-size: 12px; line-height: 1.6; max-height: 160px; overflow-y: auto; color: #4a5568; }
   @media (max-width: 600px) {
     body { margin: 16px auto; padding: 0 12px; }
     .card { padding: 12px 14px; }
@@ -51,7 +63,7 @@
 <body>
 
 <h1>📚 个人 AI 知识库</h1>
-<p class="sub">本地中文向量模型 · 智谱 GLM-4-flash · RAG 问答</p>
+<p class="sub">本地中文向量模型 · 智谱 GLM-4-flash · RAG 问答 + ReAct Agent 工具调用</p>
 
 <div class="card">
   <label>① 上传资料</label>
@@ -67,6 +79,13 @@
   <div class="row">
     <input type="text" id="question" placeholder="例如:RAG 是什么?chunk 切太大有什么问题?" onkeydown="if(event.key==='Enter') askQuestion()">
     <button id="askBtn" onclick="askQuestion()">问 AI</button>
+  </div>
+  <div class="mode-row">
+    <label class="mode-switch">
+      <input type="checkbox" id="agentMode">
+      <span>🤖 Agent 模式</span>
+    </label>
+    <span class="mode-hint">开启后模型可自主调用工具（列文档 / 按来源检索），并展示每一步调用过程</span>
   </div>
 </div>
 
@@ -149,7 +168,50 @@ async function uploadFiles() {
   }
 }
 
-let chatHistory = [];  // 多轮对话记忆: [{q, a, sources}]
+let chatHistory = [];  // 多轮对话记忆: [{q, a, sources, trace, agent}]
+
+// Agent 模式: 把 trace 渲染成可折叠的"工具调用过程"面板
+function buildTrace(trace) {
+  const wrap = document.createElement('div');
+  wrap.className = 'trace';
+  const head = document.createElement('div');
+  head.className = 'trace-head';
+  let open = false;
+  const label = () => '🔧 工具调用过程（' + trace.length + ' 步）' + (open ? ' ▴' : ' ▾');
+  head.textContent = label();
+  const body = document.createElement('div');
+  body.className = 'trace-body';
+  body.style.display = 'none';
+  head.onclick = () => {
+    open = !open;
+    body.style.display = open ? 'block' : 'none';
+    head.textContent = label();
+  };
+  for (const t of trace) {
+    const step = document.createElement('div');
+    step.className = 'trace-step';
+    const th = document.createElement('div');
+    th.className = 'trace-step-head';
+    // 降级/触顶这类步骤没有 tool 字段, 用 type 兜底显示
+    th.textContent = '第' + (t.step || '?') + '步 · ' + (t.tool || t.type || '系统');
+    const ta = document.createElement('div');
+    ta.className = 'trace-args';
+    ta.textContent = '参数: ' + JSON.stringify(t.args || {});
+    step.appendChild(th);
+    step.appendChild(ta);
+    const res = t.result || t.note || '';
+    if (res) {
+      const tr = document.createElement('div');
+      tr.className = 'trace-result';
+      tr.textContent = String(res).slice(0, 500);
+      step.appendChild(tr);
+    }
+    body.appendChild(step);
+  }
+  wrap.appendChild(head);
+  wrap.appendChild(body);
+  return wrap;
+}
 
 function renderChat() {
   const box = document.getElementById('chat');
@@ -159,7 +221,7 @@ function renderChat() {
     msg.className = 'msg';
     const q = document.createElement('div');
     q.className = 'q-bubble';
-    q.textContent = '🙋 ' + h.q;
+    q.textContent = (h.agent ? '🤖 ' : '🙋 ') + h.q;
     const a = document.createElement('div');
     a.className = 'a-bubble answer md-body';
     if (window.marked) {
@@ -169,6 +231,8 @@ function renderChat() {
       a.textContent = h.a;
     }
     msg.appendChild(q);
+    // Agent 模式: 先把"模型是怎么查的"过程展示出来, 再给最终答案
+    if (h.trace && h.trace.length) { msg.appendChild(buildTrace(h.trace)); }
     msg.appendChild(a);
     // 操作行:复制 + 反馈(每条独立, 避免误标)
     const fb = document.createElement('div');
@@ -236,20 +300,34 @@ async function refreshFbStat() {
 async function askQuestion() {
   const q = document.getElementById('question').value.trim();
   if (!q) return;
+  const agentMode = document.getElementById('agentMode').checked;
+  const endpoint = agentMode ? '/ask_agent' : '/ask';
   const btn = document.getElementById('askBtn');
-  btn.disabled = true; btn.textContent = '思考中...';
+  btn.disabled = true; btn.textContent = agentMode ? 'Agent 思考中...' : '思考中...';
   try {
-    const r = await fetch('/ask', {
+    // history 只回传 q/a, 不带 trace, 避免请求体无谓膨胀
+    const histForApi = chatHistory.map(h => ({q: h.q, a: h.a}));
+    const r = await fetch(endpoint, {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({question: q, history: chatHistory})
+      body: JSON.stringify({question: q, history: histForApi})
     });
     const d = await r.json();
     if (!d.ok) { alert(d.error || '出错了'); return; }
     document.getElementById('resultCard').style.display = 'block';
-    chatHistory.push({q: q, a: d.answer, sources: d.sources || []});
+    chatHistory.push({
+      q: q, a: d.answer,
+      sources: d.sources || [],
+      trace: d.trace || null,
+      agent: agentMode
+    });
     document.getElementById('question').value = '';
     renderChat();
+    // Agent 模式下默认展开调用过程, 让人直接看到"它查了什么"
+    if (agentMode && d.trace && d.trace.length) {
+      const heads = document.querySelectorAll('#chat .trace-head');
+      if (heads.length) heads[heads.length - 1].click();
+    }
   } finally {
     btn.disabled = false; btn.textContent = '问 AI';
   }

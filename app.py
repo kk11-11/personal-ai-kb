@@ -410,4 +410,6 @@ if __name__ == "__main__":
     print("🚀 个人 AI 知识库 已启动 (json_response utf-8 安全模式): http://0.0.0.0:5000")
     print("   如果下面没见到这行,说明你跑的是旧代码 —— 请先彻底关闭旧进程再启动!")
     host = os.environ.get("HOST", "0.0.0.0")
-    app.run(host=host, port=5000, debug=False)
+    # 端口可用环境变量覆盖, 方便调试时另开实例而不影响已在跑的 5000
+    port = int(os.environ.get("PORT", 5000))
+    app.run(host=host, port=port, debug=False)

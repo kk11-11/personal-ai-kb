@@ -12,6 +12,7 @@ from openai import OpenAI
 import sys
 import time
 import threading
+from agent import build_tools, run_react
 # Windows 下强制 stdout/stderr 为 utf-8, 避免 print 与默认编码报错
 try:
     sys.stdout.reconfigure(encoding="utf-8")
@@ -47,13 +48,6 @@ ensure_model()
 embedder = SentenceTransformer(MODEL_DIR)
 chroma_client = chromadb.PersistentClient(path=DB_DIR)
 collection = chroma_client.get_or_create_collection(COLLECTION)
-
-# 知识库为空且有资料时,自动建库(提升首次体验;本地 / Docker 通用)
-if collection.count() == 0:
-    try:
-        reingest()
-    except Exception as e:
-        print("⚠️ 自动建库跳过:", e)
 
 API_KEY = os.environ.get("ZHIPU_API_KEY")
 if not API_KEY:
@@ -124,6 +118,24 @@ def reingest() -> int:
     global collection
     collection = coll
     return len(all_chunks)
+
+
+# 知识库为空且有资料时,自动建库(提升首次体验;本地 / Docker 通用)
+# 注意:必须放在 reingest 定义之后。原来这段写在文件前部,执行时 reingest 尚未定义会抛 NameError,
+# 又被 except 静默吞掉 —— 导致"自动建库"从未真正生效,新 clone 的项目知识库一直是空的。
+if collection.count() == 0:
+    try:
+        _n = reingest()
+        if _n:
+            print(f"✅ 首次启动自动建库完成, 共 {_n} 个片段")
+    except Exception as e:
+        print("⚠️ 自动建库跳过:", e)
+
+
+# ====== Agent 工具表(ReAct 用)======
+# 传 lambda 而不是 collection 对象: reingest() 会把全局 collection 重指向新集合,
+# 工具每次取最新的句柄才不会查到失效集合。
+AGENT_TOOLS = build_tools(embedder, lambda: collection)
 
 
 def answer_question(q: str, history=None):
@@ -337,6 +349,32 @@ def ask():
         # 防止错误信息本身含特殊字符在序列化时再次编码失败
         return json_response({"ok": False, "error": _safe_text(e)}, status=500)
     return json_response({"ok": True, "answer": answer, "sources": sources})
+
+
+@app.route("/ask_agent", methods=["POST"])
+def ask_agent():
+    """Agent 模式: 手写 ReAct 循环 + 工具调用。与 /ask 完全独立, 不影响原有问答链路。"""
+    data = request.get_json(silent=True) or {}
+    q = (data.get("question") or "").strip()
+    history = data.get("history") or []
+    if not q:
+        return json_response({"ok": False, "error": "问题不能为空"}, status=400)
+    try:
+        max_steps = int(data.get("max_steps") or 4)
+    except Exception:
+        max_steps = 4
+    try:
+        answer, trace = run_react(
+            q,
+            llm,
+            AGENT_TOOLS,
+            model="glm-4-flash",
+            max_steps=max_steps,
+            history=history,
+        )
+    except Exception as e:
+        return json_response({"ok": False, "error": _safe_text(e)}, status=500)
+    return json_response({"ok": True, "answer": answer, "trace": trace})
 
 
 @app.route("/feedback", methods=["POST"])

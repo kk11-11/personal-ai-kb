@@ -153,21 +153,33 @@ def answer_question(q: str, history=None):
     context = "\n\n".join(
         f"[{m['source']}#{m['chunk']}]\n{d}" for d, m in zip(docs, metas)
     )
-    # 拼接对话历史: 超过阈值时先摘要压缩早期轮次, 仅用于代词指代消歧
-    # (检索仍锚定当前问题, 避免上下文漂移; 长对话也不会无限膨胀 token)
+    # 拼接对话历史: 超过阈值时先摘要压缩早期轮次
+    # 每条加显式"第 N 轮"编号, 让模型能精准定位"第一个问题""第 3 轮""刚才"这类相对指代
+    # (检索仍锚定当前问题避免漂移; 长对话不会无限膨胀 token)
     hist_text = ""
     if history:
         summary, recent = summarize_history(history, llm)
         if summary:
             hist_text = f"[早期对话摘要]\n{summary}\n\n"
-        hist_text += "\n".join(
-            f"用户: {h.get('q', '')}\n助手: {h.get('a', '')}" for h in recent
-        )
+        # recent 是 history 末尾 K 条; 全局轮次编号 = len(history) - len(recent) + 1 + i
+        K = len(recent)
+        start_turn = len(history) - K + 1
+        recent_lines = []
+        for i, h in enumerate(recent):
+            turn_no = start_turn + i
+            recent_lines.append(
+                f"【第 {turn_no} 轮】\n用户: {h.get('q', '')}\n助手: {h.get('a', '')}"
+            )
+        hist_text += "\n\n".join(recent_lines)
     prompt = (
-        "你是用户的个人知识库助手。请严格根据下面提供的【资料】回答问题,"
-        "如果资料里没有答案,请直说'资料里没找到相关信息',不要编造。\n"
-        "可以结合【对话历史】(含可能的[早期对话摘要])理解用户问题里的代词(它/这个/上面)指代什么,"
-        "但回答内容必须基于【资料】,不要凭记忆编造。\n\n"
+        "你是用户的个人知识库助手。\n"
+        "【资料】是你回答的事实依据,优先基于【资料】作答;若【资料】里没有相关信息,不要编造。\n"
+        "【对话历史】(含可能的[早期对话摘要])里每条都带『第 N 轮』编号,可结合它:\n"
+        "  1) 理解用户问题中代词(它/这个/上面/那个/刚才)的指代;\n"
+        "  2) 当用户说『第一个问题』『第二个问题』『第 X 轮』『最前面那个』『前面聊到的』时, 按编号精确定位对应轮次, 不要凭感觉挑一条;\n"
+        "  3) 当用户明显在要求『总结 / 回顾 / 综合前面的回答』时, "
+        "     允许直接引用【对话历史】里已记录的助手回答来作答——那些回答本身是基于资料生成的, 可以安全复用。\n"
+        "注意:不要凭空编造【资料】和【对话历史】里都没有的新事实。\n\n"
         f"【资料】\n{context}\n\n"
     )
     if hist_text:

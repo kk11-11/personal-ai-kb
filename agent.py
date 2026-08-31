@@ -28,13 +28,19 @@ def summarize_history(history, llm, model="glm-4-flash", keep_recent=HISTORY_REC
         return None, history
     old = history[:-keep_recent]
     recent = history[-keep_recent:]
-    old_text = "\n".join(
-        f"用户: {h.get('q', '')}\n助手: {h.get('a', '')}" for h in old
-    )
+    # 摘要里按"全局轮次编号"对齐, 这样后续『第 1 轮』『第一个问题』这类相对指代能精准对回历史
+    old_lines = []
+    # old 在 history 里是从头开始的早期轮次, 编号从 1 起算
+    for i, h in enumerate(old, start=1):
+        old_lines.append(
+            f"[第 {i} 轮] 用户: {h.get('q', '')}\n助手: {h.get('a', '')}"
+        )
+    old_text = "\n\n".join(old_lines)
     prompt = (
-        "请把下面这段对话历史压缩成一段简洁摘要(中文, 200 字以内)。\n"
+        "请把下面这段对话历史压缩成一段简洁摘要(中文, 300 字以内)。\n"
         "保留: 用户已确认的事实、已做出的决定、已解决的关键问题, 以及对后续对话重要的上下文"
         "(例如提到的具体文件 / 项目 / 偏好)。\n"
+        "**必须按格式保留每轮的全局轮次编号**: '[第 N 轮] 用户问: ... 助手答: ...'\n"
         "丢弃: 寒暄、重复内容、可被最近对话覆盖的细节。\n"
         "不要编造新信息。\n\n"
         f"【对话历史】\n{old_text}\n\n【摘要】"

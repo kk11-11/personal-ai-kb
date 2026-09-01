@@ -22,5 +22,7 @@ COPY . .
 # 暴露端口
 EXPOSE 5000
 
-# 启动(模型缺失时由 app.py 自动从 ModelScope 下载)
-CMD ["python", "app.py"]
+# 启动:用 gunicorn 跑生产(而非 Flask dev server);绑定 $PORT(PaaS 注入,默认 5000)
+# 单 worker(-w 1):sentence-transformers 模型占内存大,多 worker 会翻倍显存/内存
+# --timeout 120:首次启动要下载模型+建库,可能超过默认 30s
+CMD ["sh", "-c", "gunicorn -b 0.0.0.0:${PORT:-5000} -w 1 --timeout 120 --graceful-timeout 30 app:app"]

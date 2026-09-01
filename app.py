@@ -43,9 +43,25 @@ def ensure_model():
         raise SystemExit(f"❌ 模型下载失败: {e}\n请手动把模型放到 {MODEL_DIR}")
 
 
+def ensure_reranker():
+    """可选:云端首次启动自动从 ModelScope 下载 ReRank 模型,保持 100% 检索命中率。
+    仅在环境变量 AUTO_DOWNLOAD_RERANKER=1 时尝试;否则缺失即降级为纯向量检索(94.4%)。"""
+    if os.environ.get("AUTO_DOWNLOAD_RERANKER") != "1":
+        return
+    if os.path.isdir(RERANK_DIR):
+        return
+    print("📥 检测到 AUTO_DOWNLOAD_RERANKER=1,正在从 ModelScope 下载 BAAI/bge-reranker-base ...")
+    try:
+        from modelscope import snapshot_download
+        snapshot_download("BAAI/bge-reranker-base", local_dir=RERANK_DIR)
+    except Exception as e:
+        print(f"⚠️ ReRank 模型下载失败,将降级为纯向量检索: {e}")
+
+
 # ====== 启动时:加载模型 + 初始化 Chroma(只加载一次)======
 print("🔧 启动中: 加载本地向量模型 ...")
 ensure_model()
+ensure_reranker()  # 可选:云端按需下载 ReRank 模型(默认不下载,自动降级)
 embedder = SentenceTransformer(MODEL_DIR)
 chroma_client = chromadb.PersistentClient(path=DB_DIR)
 collection = chroma_client.get_or_create_collection(COLLECTION)
@@ -428,6 +444,12 @@ def feedback():
 @app.route("/feedback/stats", methods=["GET"])
 def feedback_stats_route():
     return json_response(feedback_stats())
+
+
+@app.route("/health", methods=["GET"])
+def health_route():
+    """健康检查:供部署平台探活(PaaS 据此判断实例存活、决定是否路由流量)。"""
+    return json_response({"ok": True, "status": "running"})
 
 
 if __name__ == "__main__":

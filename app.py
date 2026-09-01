@@ -13,6 +13,7 @@ import sys
 import time
 import threading
 from agent import build_tools, run_react, summarize_history
+from history_retrieval import prepare_history_vector
 # Windows 下强制 stdout/stderr 为 utf-8, 避免 print 与默认编码报错
 try:
     sys.stdout.reconfigure(encoding="utf-8")
@@ -138,7 +139,7 @@ if collection.count() == 0:
 AGENT_TOOLS = build_tools(embedder, lambda: collection)
 
 
-def answer_question(q: str, history=None):
+def answer_question(q: str, history=None, history_mode="summary"):
     """检索 + 智谱回答。history: 最近几轮 [(q,a),...] 用于指代消歧。返回 (answer, sources)。"""
     if collection.count() == 0:
         return ("⚠️ 知识库是空的。请先在页面上传一些文档。", [])
@@ -158,19 +159,25 @@ def answer_question(q: str, history=None):
     # (检索仍锚定当前问题避免漂移; 长对话不会无限膨胀 token)
     hist_text = ""
     if history:
-        summary, recent = summarize_history(history, llm)
-        if summary:
-            hist_text = f"[早期对话摘要]\n{summary}\n\n"
-        # recent 是 history 末尾 K 条; 全局轮次编号 = len(history) - len(recent) + 1 + i
-        K = len(recent)
-        start_turn = len(history) - K + 1
-        recent_lines = []
-        for i, h in enumerate(recent):
-            turn_no = start_turn + i
-            recent_lines.append(
-                f"【第 {turn_no} 轮】\n用户: {h.get('q', '')}\n助手: {h.get('a', '')}"
-            )
-        hist_text += "\n\n".join(recent_lines)
+        if history_mode == "vector":
+            # 方案B: 向量化历史召回 - 按当前问题语义召回 top_k 轮原文(保留细节, 但召回是语义的)
+            # 用于和方案A(摘要压缩)做长对话记忆对比; 默认仍走 summary 分支, 生产行为不变
+            hist_text = prepare_history_vector(history, q, embedder, top_k=6)
+        else:
+            # 方案A(默认): 摘要压缩 - 早期轮次压摘要, 最近 keep_recent 轮原文
+            summary, recent = summarize_history(history, llm)
+            if summary:
+                hist_text = f"[早期对话摘要]\n{summary}\n\n"
+            # recent 是 history 末尾 K 条; 全局轮次编号 = len(history) - len(recent) + 1 + i
+            K = len(recent)
+            start_turn = len(history) - K + 1
+            recent_lines = []
+            for i, h in enumerate(recent):
+                turn_no = start_turn + i
+                recent_lines.append(
+                    f"【第 {turn_no} 轮】\n用户: {h.get('q', '')}\n助手: {h.get('a', '')}"
+                )
+            hist_text += "\n\n".join(recent_lines)
     prompt = (
         "你是用户的个人知识库助手。\n"
         "【资料】是你回答的事实依据,优先基于【资料】作答;若【资料】里没有相关信息,不要编造。\n"

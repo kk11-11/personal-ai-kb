@@ -10,7 +10,8 @@ import json
 import re
 
 # 多轮对话: 最近保留轮数(超过的部分先被 LLM 摘要压缩, 而非直接丢弃)
-HISTORY_RECENT = 4
+# 调大 4->6 是为了应对长对话里仍要精准定位最早那几轮内容, 避免摘要压缩后丢失关键概念
+HISTORY_RECENT = 6
 
 
 def summarize_history(history, llm, model="glm-4-flash", keep_recent=HISTORY_RECENT):

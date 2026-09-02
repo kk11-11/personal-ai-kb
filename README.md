@@ -1,3 +1,13 @@
+---
+title: Personal AI KB
+emoji: "📚"
+colorFrom: blue
+colorTo: green
+sdk: docker
+app_port: 5000
+pinned: false
+---
+
 # 个人 AI 知识库 (Personal AI Knowledge Base)
 
 > 一个基于 RAG（检索增强生成）的本地个人知识库 Web 应用：上传文档 → 自动向量化建库 → 基于资料问答并标注出处。

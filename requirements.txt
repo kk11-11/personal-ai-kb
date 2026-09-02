@@ -7,6 +7,11 @@ python-docx==1.2.0
 openai==3.3.1
 modelscope==1.39.1
 gunicorn==26.2.0
+# Agent 编排框架: 第1周用 LangGraph 重写手写 ReAct 循环(见 langgraph_agent.py / LANGGRAPH_NOTES.md)
+# 说明: 本机 venv 因环境限制将框架装在 venv/langgraph_extra 侧目录(由 .pth 自动挂载),
+#       在干净机器上直接 `pip install -r requirements.txt` 即可正常装入 site-packages。
+langgraph==1.2.11
+langchain-core==1.6.1
 # 关键间接依赖锁定(云端若拉到不兼容新版会崩,本地已验证以下组合可用)
 numpy==2.5.2
 # 注意:torch 刻意不在此安装 —— 由 Dockerfile 先从 PyTorch 官方 CPU 源安装

@@ -7,11 +7,11 @@ __pycache__/
 # 向量库:运行时从 docs/ 重建(秒级),不打进镜像
 chroma_db/
 
-# 模型:预置进镜像(避免启动时下载拖垮 PaaS 启动超时),但排除冗余的等价权重格式。
-# 注:bge-reranker-base 目录同时含 onnx/pytorch/safetensors 三份等价权重(合计 3.2GB),
-# 运行时实际只用 pytorch_model.bin,故排除另外两份,省约 2.1GB。
-models/*/onnx/
-models/*/*.safetensors
+# 模型:git 仓库里不含(在 .gitignore 中),HF/PaaS 启动时由 ensure_model/ensure_reranker
+# 从 ModelScope 下载 —— bge-small-zh-v1.5 约 92MB 同步下载(几十秒,保证首次查询可用),
+# bge-reranker-base 约 1GB 改后台线程下载(不阻塞启动,期间用纯向量检索 94.4%,
+# 下载完自动升级到二阶段重排 100%)。详见 app.py:ensure_reranker(async_download=True)。
+models/
 
 # 密钥 / 运行产物
 .env

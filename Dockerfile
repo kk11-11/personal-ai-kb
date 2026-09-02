@@ -12,7 +12,15 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     gcc \
     && rm -rf /var/lib/apt/lists/*
 
-# 先装依赖(利用 Docker 层缓存,改代码后不必重装)
+# 先单独装 CPU 版 torch —— 必须在 requirements.txt 之前,顺序很关键。
+# PyPI 上的默认 torch 是 CUDA 版(约 2~3GB),本项目为纯 CPU 推理、完全用不上;
+# 官方 CPU 源的同版本(torch==2.13.0+cpu)仅约 200MB,镜像体积因此降一个数量级,
+# 构建与启动都大幅提速,也显著降低 PaaS 上超时/OOM 类失败的概率。
+# 注意:若先装 sentence-transformers,它会把 CUDA 版 torch 依赖拉回来覆盖掉 CPU 版。
+RUN pip install --no-cache-dir --index-url https://download.pytorch.org/whl/cpu \
+    torch==2.13.0+cpu
+
+# 再装其余依赖(requirements.txt 中刻意不含 torch,以免覆盖上面的 CPU 版)
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt \
     && pip install --no-cache-dir modelscope

@@ -43,19 +43,34 @@ def ensure_model():
         raise SystemExit(f"❌ 模型下载失败: {e}\n请手动把模型放到 {MODEL_DIR}")
 
 
-def ensure_reranker():
+def ensure_reranker(async_download: bool = True):
     """可选:云端首次启动自动从 ModelScope 下载 ReRank 模型,保持 100% 检索命中率。
-    仅在环境变量 AUTO_DOWNLOAD_RERANKER=1 时尝试;否则缺失即降级为纯向量检索(94.4%)。"""
+    仅在环境变量 AUTO_DOWNLOAD_RERANKER=1 时尝试;否则缺失即降级为纯向量检索(94.4%)。
+
+    默认后台线程下载(async_download=True):**不阻塞服务启动**。
+    ReRank 模型约 1GB,若同步下载会拖住 gunicorn 起不来,导致 PaaS 判定启动超时 /
+    健康检查失败(表现为日志"卡住不动"、部署一直转圈)。改为后台下载后:服务先用
+    纯向量检索对外提供(94.4%),下载完成即自动启用二阶段重排(100%),无需重启。
+    """
     if os.environ.get("AUTO_DOWNLOAD_RERANKER") != "1":
         return
     if os.path.isdir(RERANK_DIR):
         return
-    print("📥 检测到 AUTO_DOWNLOAD_RERANKER=1,正在从 ModelScope 下载 BAAI/bge-reranker-base ...")
-    try:
-        from modelscope import snapshot_download
-        snapshot_download("BAAI/bge-reranker-base", local_dir=RERANK_DIR)
-    except Exception as e:
-        print(f"⚠️ ReRank 模型下载失败,将降级为纯向量检索: {e}")
+
+    def _download():
+        print("📥 后台下载 ReRank 模型 BAAI/bge-reranker-base ...")
+        try:
+            from modelscope import snapshot_download
+            snapshot_download("BAAI/bge-reranker-base", local_dir=RERANK_DIR)
+            print("✅ ReRank 模型就绪,后续检索自动启用二阶段重排")
+        except Exception as e:
+            print(f"⚠️ ReRank 模型下载失败,将降级为纯向量检索: {e}")
+
+    if async_download:
+        threading.Thread(target=_download, daemon=True).start()
+        print("ℹ️  ReRank 模型转入后台下载(期间用纯向量检索,完成后自动启用)")
+    else:
+        _download()
 
 
 # ====== 启动时:加载模型 + 初始化 Chroma(只加载一次)======

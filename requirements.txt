@@ -9,5 +9,7 @@ modelscope==1.39.1
 gunicorn==26.2.0
 # 关键间接依赖锁定(云端若拉到不兼容新版会崩,本地已验证以下组合可用)
 numpy==2.5.2
-torch==2.13.0
+# 注意:torch 刻意不在此安装 —— 由 Dockerfile 先从 PyTorch 官方 CPU 源安装
+# torch==2.13.0+cpu。PyPI 上默认的 torch 是 CUDA 版(约 2~3GB),本项目为纯 CPU
+# 推理、完全用不上 CUDA 运行时;CPU 版仅约 200MB,镜像体积可降一个数量级。
 

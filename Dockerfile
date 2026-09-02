@@ -1,6 +1,7 @@
 # 个人 AI 知识库 - Docker 镜像
-# 基础镜像:Python 3.11 (slim 版体积小)
-FROM python:3.11-slim
+# 基础镜像:Python 3.12 (slim 版体积小)
+# 注: numpy>=2.5 和 torch>=2.11 都需要 Python>=3.12, 用 3.11-slim 装不上
+FROM python:3.12-slim
 
 # 设置工作目录
 WORKDIR /app

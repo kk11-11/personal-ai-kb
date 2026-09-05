@@ -251,9 +251,13 @@ if __name__ == "__main__":
     client = chromadb.PersistentClient(path=os.path.join(APP_DIR, "chroma_db"))
     coll = client.get_or_create_collection("personal_kb")
 
-    api_key = os.environ.get("ZHIPU_API_KEY")
-    if not api_key:
-        raise SystemExit("请设置 ZHIPU_API_KEY")
+    api_key = os.environ.get("ZHIPU_API_KEY", "").strip()
+    if not api_key or not api_key.isascii():
+        # 常见坑: .env 里是中文占位符 -> 请求头构建时抛 UnicodeEncodeError, 难排查。提前拦下。
+        raise SystemExit(
+            "❌ ZHIPU_API_KEY 无效: 缺失, 或 .env 里存的还是占位符(含中文)。\n"
+            "   请把 .env 中的 ZHIPU_API_KEY 改成真实 key (纯英文数字)。"
+        )
     llm = OpenAI(api_key=api_key, base_url="https://open.bigmodel.cn/api/paas/v4/")
 
     tools = build_tools(embedder, lambda: coll)

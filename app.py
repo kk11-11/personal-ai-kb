@@ -274,7 +274,10 @@ def json_response(data, status: int = 200):
 
 
 # ====== 用户反馈存储(轻量 JSON + 锁, 不影响主问答性能)======
-FEEDBACK_PATH = os.path.join(APP_DIR, "feedback.json")
+# 持久化目录:魔搭创空间等平台容器重启会清空默认文件系统, 其持久目录为 /mnt/workspace;
+# 存在则写入该目录(反馈数据跨重启保留, 支撑 W3 自进化闭环), 否则回退到项目目录。
+_PERSIST_DIR = "/mnt/workspace" if os.path.isdir("/mnt/workspace") else APP_DIR
+FEEDBACK_PATH = os.path.join(_PERSIST_DIR, "feedback.json")
 _fb_lock = threading.Lock()
 
 def save_feedback(entry: dict) -> dict:
@@ -473,9 +476,11 @@ def health_route():
 
 
 if __name__ == "__main__":
-    print("🚀 个人 AI 知识库 已启动 (json_response utf-8 安全模式): http://0.0.0.0:5000")
+    print("🚀 个人 AI 知识库 已启动 (json_response utf-8 安全模式): http://0.0.0.0:7860")
     print("   如果下面没见到这行,说明你跑的是旧代码 —— 请先彻底关闭旧进程再启动!")
     host = os.environ.get("HOST", "0.0.0.0")
-    # 端口可用环境变量覆盖, 方便调试时另开实例而不影响已在跑的 5000
-    port = int(os.environ.get("PORT", 5000))
+    # 端口默认 7860: 魔搭创空间(ModelScope Studio)Docker 类型强制要求监听 7860,
+    # 同时兼容 CloudBase / 其他 PaaS(它们通常注入 PORT 环境变量, 此处自动读取)。
+    # 本地调试不想用 7860 时, 设 PORT 环境变量即可: PORT=5000 python app.py
+    port = int(os.environ.get("PORT", 7860))
     app.run(host=host, port=port, debug=False)

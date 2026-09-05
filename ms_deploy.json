@@ -1,0 +1,8 @@
+{
+  "sdk_type": "docker",
+  "port": 7860,
+  "resource_configuration": "platform/2v-cpu-16g-mem",
+  "environment_variables": [
+    { "key": "AUTO_DOWNLOAD_RERANKER", "value": "1" }
+  ]
+}

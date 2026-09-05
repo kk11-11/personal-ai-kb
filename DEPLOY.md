@@ -36,7 +36,7 @@
 1. 在 CloudBase 控制台创建「容器服务」或「云托管」，源码方式选「代码仓库」（关联 GitHub 仓库 `kk11-11/personal-ai-kb`）。
 2. 构建配置：
    - 运行环境：Docker（自动识别仓库根目录 `Dockerfile`）
-   - 监听端口：填 `5000`（或平台给的 `$PORT`，代码已支持）
+   - 监听端口：填 `7860`（与容器默认监听一致；若平台注入 `$PORT` 则自动读取）
 3. 环境变量：
    ```
    ZHIPU_API_KEY=sk-xxx
@@ -54,15 +54,19 @@
 > 前置：需完成实名认证（绑定阿里云账号 + 云账号实名）。Docker 创空间目前为 Beta。
 
 1. 在魔搭「创空间」列表 → 创建创空间 → 选 **Docker** 类型（或"编程式创空间 / 快速部署并创建"），上传项目文件夹或 Git 推送。
-2. **端口必须为 7860**：本项目监听 `${PORT:-5000}`，故在环境变量里设 `PORT=7860` 即可。
-3. 项目根目录放 `ms_deploy.json`：
+2. **端口必须为 7860**：本项目默认即监听 `7860`（无需再设 `PORT`，保持平台路由端口一致即可）。
+3. 项目根目录已放好 `ms_deploy.json`（已随代码提交），内容：
    ```json
    {
      "sdk_type": "docker",
      "port": 7860,
-     "resource_configuration": "platform/2v-cpu-16g-mem"
+     "resource_configuration": "platform/2v-cpu-16g-mem",
+     "environment_variables": [
+       { "key": "AUTO_DOWNLOAD_RERANKER", "value": "1" }
+     ]
    }
    ```
+   > `ZHIPU_API_KEY` **不要写进 `ms_deploy.json`**（会进 git 仓库泄露）。请在 Studio 创建后于「环境变量 / 密钥」设置里单独添加。
 4. Secrets / 环境变量配：
    ```
    ZHIPU_API_KEY=sk-xxx
@@ -108,7 +112,7 @@
 ## 5. Render（国外，免费档）
 
 1. 登录 render.com，New → Web Service → 关联 GitHub 仓库。
-2. Runtime 选 Docker，端口填 `5000`。
+2. Runtime 选 Docker，端口填 `7860`。
 3. Environment → Add Environment Variable：`ZHIPU_API_KEY`、`AUTO_DOWNLOAD_RERANKER=1`（可选）。
 4. 免费实例休眠后首次访问会冷启动（模型下载 + 建库），需等 1~3 分钟。
 
@@ -119,14 +123,14 @@
 ```bash
 cd personal-ai-kb
 docker build -t personal-ai-kb .
-docker run -d -p 5000:5000 \
+docker run -d -p 7860:7860 \
   -e ZHIPU_API_KEY=sk-xxx \
   -e AUTO_DOWNLOAD_RERANKER=1 \
   -v $(pwd)/chroma_db:/app/chroma_db \
   -v $(pwd)/models:/app/models \
   --name kb personal-ai-kb
-# 打开 http://localhost:5000 验证
-curl http://localhost:5000/health
+# 打开 http://localhost:7860 验证
+curl http://localhost:7860/health
 ```
 
 挂载 `chroma_db` / `models` 两个 volume，避免容器重启丢失向量库与模型。

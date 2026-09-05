@@ -28,10 +28,10 @@ RUN pip install --no-cache-dir -r requirements.txt \
 # 拷贝应用代码
 COPY . .
 
-# 暴露端口
-EXPOSE 5000
+# 暴露端口(魔搭创空间 Docker 类型强制要求 7860; CloudBase 等注入 PORT 时自动读取)
+EXPOSE 7860
 
-# 启动:用 gunicorn 跑生产(而非 Flask dev server);绑定 $PORT(PaaS 注入,默认 5000)
+# 启动:用 gunicorn 跑生产(而非 Flask dev server);绑定 $PORT(PaaS 注入,默认 7860)
 # 单 worker(-w 1):sentence-transformers 模型占内存大,多 worker 会翻倍显存/内存
 # --timeout 120:首次启动要下载模型+建库,可能超过默认 30s
-CMD ["sh", "-c", "gunicorn -b 0.0.0.0:${PORT:-5000} -w 1 --timeout 120 --graceful-timeout 30 app:app"]
+CMD ["sh", "-c", "gunicorn -b 0.0.0.0:${PORT:-7860} -w 1 --timeout 120 --graceful-timeout 30 app:app"]

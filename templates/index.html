@@ -169,15 +169,21 @@ async function uploadFiles() {
 }
 
 let chatHistory = [];  // 多轮对话记忆: [{q, a, sources, trace, agent}]
+// 稳定会话 ID: 作为多 Agent 的 thread_id, 让跨轮对话共享同一份 checkpoint 记忆且不串用户
+const SESSION_ID = (window.crypto && crypto.randomUUID) ? crypto.randomUUID() : ('sid-' + Date.now());
 
-// Agent 模式: 把 trace 渲染成可折叠的"工具调用过程"面板
+// Agent 模式: 把 trace 渲染成可折叠的"协作过程"面板
+// 兼容两种格式:
+//   - 多 Agent(本项目当前): {worker: 节点名, log: 内容}
+//   - 旧单 Agent: {step, tool, type, args, result}
 function buildTrace(trace) {
   const wrap = document.createElement('div');
   wrap.className = 'trace';
   const head = document.createElement('div');
   head.className = 'trace-head';
+  const isMulti = trace.length && trace[0].worker !== undefined;
   let open = false;
-  const label = () => '🔧 工具调用过程（' + trace.length + ' 步）' + (open ? ' ▴' : ' ▾');
+  const label = () => (isMulti ? '🕸️ 多 Agent 协作轨迹（' : '🔧 工具调用过程（') + trace.length + ' 步）' + (open ? ' ▴' : ' ▾');
   head.textContent = label();
   const body = document.createElement('div');
   body.className = 'trace-body';
@@ -187,24 +193,42 @@ function buildTrace(trace) {
     body.style.display = open ? 'block' : 'none';
     head.textContent = label();
   };
+  // 多 Agent 节点中文名
+  const WORKER_LABEL = {
+    supervisor: '主管', planning: '规划工人', retrieval: '检索工人',
+    writing: '写作工人', verification: '校验工人'
+  };
+  let i = 0;
   for (const t of trace) {
+    i++;
     const step = document.createElement('div');
     step.className = 'trace-step';
     const th = document.createElement('div');
     th.className = 'trace-step-head';
-    // 降级/触顶这类步骤没有 tool 字段, 用 type 兜底显示
-    th.textContent = '第' + (t.step || '?') + '步 · ' + (t.tool || t.type || '系统');
-    const ta = document.createElement('div');
-    ta.className = 'trace-args';
-    ta.textContent = '参数: ' + JSON.stringify(t.args || {});
-    step.appendChild(th);
-    step.appendChild(ta);
-    const res = t.result || t.note || '';
-    if (res) {
-      const tr = document.createElement('div');
-      tr.className = 'trace-result';
-      tr.textContent = String(res).slice(0, 500);
-      step.appendChild(tr);
+    if (t.worker !== undefined) {
+      // 多 Agent 格式: 工人 + 其日志
+      const w = WORKER_LABEL[t.worker] || t.worker;
+      th.textContent = '第' + i + '步 · ' + w;
+      const ta = document.createElement('div');
+      ta.className = 'trace-args';
+      ta.textContent = (t.log || '').slice(0, 600);
+      step.appendChild(th);
+      step.appendChild(ta);
+    } else {
+      // 旧单 Agent 格式(降级兼容)
+      th.textContent = '第' + (t.step || i) + '步 · ' + (t.tool || t.type || '系统');
+      const ta = document.createElement('div');
+      ta.className = 'trace-args';
+      ta.textContent = '参数: ' + JSON.stringify(t.args || {});
+      step.appendChild(th);
+      step.appendChild(ta);
+      const res = t.result || t.note || '';
+      if (res) {
+        const tr = document.createElement('div');
+        tr.className = 'trace-result';
+        tr.textContent = String(res).slice(0, 500);
+        step.appendChild(tr);
+      }
     }
     body.appendChild(step);
   }
@@ -310,7 +334,7 @@ async function askQuestion() {
     const r = await fetch(endpoint, {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({question: q, history: histForApi})
+      body: JSON.stringify({question: q, history: histForApi, thread_id: SESSION_ID})
     });
     const d = await r.json();
     if (!d.ok) { alert(d.error || '出错了'); return; }

@@ -13,6 +13,7 @@ import sys
 import time
 import threading
 from agent import build_tools, run_react, summarize_history
+from multi_agent import run_multi_agent
 from history_retrieval import prepare_history_vector
 # Windows 下强制 stdout/stderr 为 utf-8, 避免 print 与默认编码报错
 try:
@@ -408,24 +409,28 @@ def ask():
 
 @app.route("/ask_agent", methods=["POST"])
 def ask_agent():
-    """Agent 模式: 手写 ReAct 循环 + 工具调用。与 /ask 完全独立, 不影响原有问答链路。"""
+    """Agent 模式: 多 Agent 编排(supervisor + 规划/检索/写作/校验)。
+    与 /ask 完全独立, 不影响原有问答链路。返回的 trace 为各工人协作轨迹
+    (格式 {"worker": 节点名, "log": 内容}), 前端 buildTrace 已兼容渲染。"""
     data = request.get_json(silent=True) or {}
     q = (data.get("question") or "").strip()
     history = data.get("history") or []
+    thread_id = data.get("thread_id") or "web-default"
     if not q:
         return json_response({"ok": False, "error": "问题不能为空"}, status=400)
     try:
-        max_steps = int(data.get("max_steps") or 4)
+        max_steps = int(data.get("max_steps") or 12)
     except Exception:
-        max_steps = 4
+        max_steps = 12
     try:
-        answer, trace = run_react(
+        answer, trace = run_multi_agent(
             q,
             llm,
             AGENT_TOOLS,
             model="glm-4-flash",
             max_steps=max_steps,
-            history=history,
+            thread_id=thread_id,
+            summarize_fn=summarize_history,
         )
     except Exception as e:
         return json_response({"ok": False, "error": _safe_text(e)}, status=500)

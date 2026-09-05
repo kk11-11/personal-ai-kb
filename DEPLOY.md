@@ -1,7 +1,7 @@
 # 部署指南（personal-ai-kb）
 
 本项目是 **Flask 后端 + 前端** 应用，需要 Python 运行时，**不能用纯静态托管**（如只支持 HTML 的静态部署工具）。
-下面给出三种可真正跑起来、拿到公网 demo 链接的方案。任选其一。
+下面给出四种可真正跑起来、拿到公网 demo 链接的方案（Hugging Face Spaces 免费首选）。任选其一。
 
 ---
 
@@ -29,7 +29,25 @@
 
 ---
 
-## 1. 腾讯云 CloudBase（容器版 / 云托管）
+## 1. Hugging Face Spaces（免费首选，README 已配 front matter）
+
+最省事、免费、海外访问稳定，且本项目 README 已写好 `sdk: docker` 的 front matter，仓库关联后 HF 即识别为 Docker Space 自动构建。
+
+1. 登录 huggingface.co → 右上角 **New Space** → 命名（如 `personal-ai-kb`）→ **Space 类型选 Docker**（不是 Gradio/Streamlit）→ 可见性选 Public（demo 需公网访问）或 Private。
+2. 创建时选「Import from GitHub」关联 `kk11-11/personal-ai-kb`，或在 Space 设置里关联。HF 按仓库根目录 `Dockerfile` 自动 `docker build` 并部署，分配 `*.hf.space` 公网地址。
+3. Space → Settings → **Secrets** 加环境变量：
+   ```
+   ZHIPU_API_KEY=sk-你的真实key
+   AUTO_DOWNLOAD_RERANKER=1   # 可选,要 100% 检索命中率才加(首次多下载~1GB)
+   ```
+4. 首次部署自动下载模型（bge-small-zh ~92MB）+ 用 `docs/` 三篇 md 建库（约 1~3 分钟），期间显示「Building」。完成后 `/health` 返回 `{"ok":true}` 即上线。
+5. 分配的 `*.hf.space` 即可演示链接，面试直接发。
+
+> 若 HF 未自动识别 `sdk: docker`，在 Space 设置确认 Docker 运行环境即可；本项目 `Dockerfile` + `requirements.txt` 已就绪，无需改代码。
+
+---
+
+## 2. 腾讯云 CloudBase（容器版 / 云托管）
 
 适合国内访问、与腾讯生态契合。
 
@@ -47,7 +65,7 @@
 
 ---
 
-## 2. Railway（最省事，国外）
+## 3. Railway（最省事，国外）
 
 1. 登录 railway.app，New Project → Deploy from GitHub repo → 选 `kk11-11/personal-ai-kb`。
 2. Railway 自动识别 `Dockerfile` 构建。
@@ -59,7 +77,7 @@
 
 ---
 
-## 3. Render（免费档，国外）
+## 4. Render（免费档，国外）
 
 1. 登录 render.com，New → Web Service → 关联 GitHub 仓库。
 2. Runtime 选 Docker，端口填 `5000`。
@@ -68,7 +86,7 @@
 
 ---
 
-## 4. 本地 docker 自测（验证镜像没问题再上云）
+## 5. 本地 docker 自测（验证镜像没问题再上云）
 
 ```bash
 cd personal-ai-kb
@@ -87,6 +105,6 @@ curl http://localhost:5000/health
 
 ---
 
-## 5. 健康检查
+## 6. 健康检查
 
 应用提供 `GET /health` 返回 `{"ok": true}`（200），供平台探活。

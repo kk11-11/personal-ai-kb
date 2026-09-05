@@ -67,11 +67,10 @@
    }
    ```
    > `ZHIPU_API_KEY` **不要写进 `ms_deploy.json`**（会进 git 仓库泄露）。请在 Studio 创建后于「环境变量 / 密钥」设置里单独添加。
-4. Secrets / 环境变量配：
+4. Secrets / 环境变量配（只需加这俩，端口已默认 7860 无需设）：
    ```
-   ZHIPU_API_KEY=sk-xxx
-   PORT=7860
-   AUTO_DOWNLOAD_RERANKER=1   # 可选
+   ZHIPU_API_KEY=sk-xxx        # 必填, 没它容器启动即崩
+   AUTO_DOWNLOAD_RERANKER=1    # 可选, 要 100% 命中率才加(多下载 ~1GB)
    ```
    （运行时环境变量会注入容器，代码用 `os.environ.get(...)` 读取即可；注意 Docker 创空间构建时不带环境变量，只有运行时注入。）
 5. 部署完成后平台分配 `https://<空间名>.modelscope.cn`（或类似）公网地址。
